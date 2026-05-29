@@ -141,3 +141,20 @@ function createRealisticEntity(type, posX, posZ) {
         speed: type === "Kitty" ? 0.015 : 0.05 + (player.currentLevel * 0.003) 
     });
 }
+// Añade esto en game-engine.js para conectar el botón del HTML
+function startVRInversion() {
+    console.log("Inicializando modo inmersivo...");
+    
+    // Forzar pantalla completa si el dispositivo lo soporta
+    if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().then(() => {
+            startBackrooms();
+        }).catch(err => {
+            console.warn("Pantalla completa rechazada, iniciando normal:", err);
+            startBackrooms();
+        });
+    } else {
+        startBackrooms();
+    }
+}
+
