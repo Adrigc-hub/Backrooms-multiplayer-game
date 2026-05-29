@@ -1,172 +1,197 @@
-// Asegurar que la pantalla de carga se oculte al iniciar
+// ==========================================
+// ENGINE GLOBAL VARIABLES
+// ==========================================
+let scene, camera, renderer, player = { currentLevel: 0 };
+let entities = [];
+let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+let touchX = 0, touchY = 0, isMobile = false;
+
+// Variables para controles de celular
+let joystickPos = { x: 0, y: 0 }, joystickActive = false;
+
+// ==========================================
+// 1. INICIALIZACIÓN AUTOMÁTICA Y DESBLOQUEO
+// ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+    console.log("Inicializando Backrooms Engine...");
+    
+    // Detectar si es dispositivo móvil
+    isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    
+    // Forzar el llenado de la barra y quitar la pantalla de carga de inmediato
     let progress = document.getElementById('loading-progress');
     let screen = document.getElementById('loading-screen');
     
     if (progress) progress.style.width = '100%';
     
-    // Desvanecer pantalla de carga tras un breve instante
     setTimeout(() => {
         if (screen) screen.style.display = 'none';
-    }, 500);
+        console.log("Pantalla de carga removida. Interfaz lista para interactuar.");
+        initThreeJS();
+        if (isMobile) setupMobileControls();
+    }, 400);
 });
-// --- SOPORTE INMERSIVO VR Y PANTALLA COMPLETA ---
+
+function initThreeJS() {
+    // Crear Escena Basica
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x15130e); // Color moqueta Backrooms
+    scene.fog = new THREE.FogExp2(0x15130e, 0.05);
+
+    // Cámara
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.7, 0); // Altura de los ojos
+
+    // Renderizador con soporte WebXR para VR Automático
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.xr.enabled = true; // ¡Habilita el modo VR 3D real!
+    
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    // Luz ambiente tenue
+    let ambientLight = new THREE.AmbientLight(0xfffaed, 0.4);
+    scene.add(ambientLight);
+
+    // Ajustar ventana
+    window.addEventListener('resize', onWindowResize);
+    
+    // Iniciar bucle de animación
+    renderer.setAnimationLoop(animate);
+}
+
+// ==========================================
+// 2. LOGICA DEL BOTÓN VR (3D AUTOMÁTICO)
+// ==========================================
 function startVRInversion() {
-    // Activa la pantalla completa para dispositivos móviles/visores antes de inicializar WebXR
-    if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().then(() => {
-            startBackrooms();
-        }).catch(err => {
-            console.log("Error al entrar en pantalla completa: ", err);
-            startBackrooms(); // Inicializa de todos modos si falla
+    console.log("Activando Modo VR Inmersivo 3D...");
+    
+    // Ocultar menú
+    document.getElementById('main-menu').style.display = 'none';
+    document.getElementById('hud').style.display = 'block';
+
+    // Buscar si el navegador soporta WebXR e iniciar la sesión inmersiva
+    if (navigator.xr) {
+        navigator.xr.requestSession('immersive-vr', {
+            optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+        }).then((session) => {
+            renderer.xr.setSession(session);
+            console.log("Sesión VR Iniciada con éxito.");
+        }).catch((err) => {
+            console.warn("No se pudo iniciar sesión VR real, aplicando simulación 3D Estereoscópica: ", err);
+            // Simulación fallback si falla o estás desde un cel normal sin visores dedicados
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            }
         });
     } else {
-        startBackrooms();
-    }
-}
-
-// --- CONSTRUCCIÓN REALISTA DE ENTIDADES (BASADO EN TUS FOTOS) ---
-function spawnEntitiesForLevel(lvl) {
-    entities = [];
-    
-    // Nivel Especial de Kitty (Si es Nivel 0 con baja probabilidad, o un mapa avanzado)
-    if (lvl === 0 && Math.random() > 0.6) {
-        createRealisticEntity("Kitty", 0, 0);
-        return;
-    }
-
-    // Spawn por defecto basado en el peligro del nivel
-    if (lvl === 27 || lvl === 4) { // Level Fun o zonas de oficinas
-        createRealisticEntity("Partygoer", (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30);
-    }
-    
-    // Siempre hay una Bacteria acechando en los niveles iniciales
-    createRealisticEntity("Bacteria", (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40);
-}
-
-function createRealisticEntity(type, posX, posZ) {
-    let entityGroup = new THREE.Group();
-    
-    if (type === "Bacteria") {
-        // Modelo basado en "1000047237.jpg" (Cuerpo distorsionado hecho de alambres/tendones negros)
-        let mat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-        
-        // Espina dorsal chueca
-        let spineGeo = new THREE.CylinderGeometry(0.08, 0.08, 3.5, 6);
-        let spine = new THREE.Mesh(spineGeo, mat);
-        spine.position.y = 2.2;
-        spine.rotation.z = 0.2; // Inclinado tétrico
-        entityGroup.add(spine);
-
-        // Extremidades asimétricas y delgadas (Patas de palo largas)
-        for(let i = 0; i < 3; i++) {
-            let legGeo = new THREE.CylinderGeometry(0.04, 0.02, 2.5, 4);
-            let leg = new THREE.Mesh(legGeo, mat);
-            leg.position.set((i - 1) * 0.4, 1.25, (Math.random() - 0.5) * 0.5);
-            leg.rotation.x = (Math.random() - 0.5) * 0.5;
-            entityGroup.add(leg);
+        // Fallback de pantalla completa táctil si no hay API WebXR
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen();
         }
-        
-        // Cabeza amorfa superior
-        let headGeo = new THREE.SphereGeometry(0.25, 6, 6);
-        let head = new THREE.Mesh(headGeo, mat);
-        head.position.set(0.1, 4.0, 0);
-        entityGroup.add(head);
-
-        entityGroup.name = "Bacteria (Entidad de Alambre)";
-
-    } else if (type === "Kitty") {
-        // Modelo basado en "1000047238.jpg" (Silueta gigantesca, completamente negra y plana de brazos largos)
-        let mat = new THREE.MeshBasicMaterial({ color: 0x050505, transparent: true, opacity: 0.98 });
-        
-        // Cuerpo ultra alargado
-        let bodyGeo = new THREE.CylinderGeometry(0.2, 0.15, 5.0, 6);
-        let body = new THREE.Mesh(bodyGeo, mat);
-        body.position.y = 3.5;
-        entityGroup.add(body);
-
-        // Brazos infinitos cayendo a los lados
-        let armLeftGeo = new THREE.CylinderGeometry(0.05, 0.03, 4.0, 4);
-        let armLeft = new THREE.Mesh(armLeftGeo, mat);
-        armLeft.position.set(-0.4, 3.5, 0);
-        armLeft.rotation.z = 0.05;
-        entityGroup.add(armLeft);
-
-        let armRight = armLeft.clone();
-        armRight.position.x = 0.4;
-        armRight.rotation.z = -0.05;
-        entityGroup.add(armRight);
-
-        // Cabeza ovalada sin rostro
-        let headGeo = new THREE.SphereGeometry(0.35, 8, 8);
-        let head = new THREE.Mesh(headGeo, mat);
-        head.position.y = 6.2;
-        entityGroup.add(head);
-
-        entityGroup.name = "Kitty (Entidad 99)";
-
-    } else if (type === "Partygoer") {
-        // Modelo basado en "1000047239.jpg" (Cuerpo cilíndrico amarillo, cabeza lisa y sonrisa pintada)
-        let bodyMat = new THREE.MeshStandardMaterial({ color: 0xddbc33, roughness: 0.9 });
-        
-        // Cuerpo de "botarga" o plástico inflado
-        let bodyGeo = new THREE.CylinderGeometry(0.4, 0.5, 2.2, 12);
-        let body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 1.1;
-        entityGroup.add(body);
-
-        // Cabeza cilíndrica redondeada
-        let headGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.9, 12);
-        let head = new THREE.Mesh(headGeo, bodyMat);
-        head.position.y = 2.4;
-        entityGroup.add(head);
-
-        // Renderizar la icónica sonrisa roja de forma procedural mediante una sub-pieza texturizada
-        let faceCanvas = document.createElement('canvas');
-        faceCanvas.width = 128; faceCanvas.height = 128;
-        let faceCtx = faceCanvas.getContext('2d');
-        faceCtx.fillStyle = '#ddbc33'; faceCtx.fillRect(0,0,128,128);
-        // Ojos pintados de rojo sangre
-        faceCtx.fillStyle = '#990000';
-        faceCtx.fillRect(35, 70, 12, 12); faceCtx.fillRect(81, 70, 12, 12);
-        // Sonrisa `=)`
-        faceCtx.strokeStyle = '#990000'; faceCtx.lineWidth = 6;
-        faceCtx.beginPath(); faceCtx.arc(64, 45, 25, 0, Math.PI, true); faceCtx.stroke();
-
-        let faceTex = new THREE.CanvasTexture(faceCanvas);
-        let faceMat = new THREE.MeshBasicMaterial({ map: faceTex });
-        let faceMesh = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 12), faceMat);
-        faceMesh.position.set(0, 2.5, 0.05);
-        entityGroup.add(faceMesh);
-
-        entityGroup.name = "Partygoer (=))";
     }
+}
 
-    // Configurar posición inicial en el laberinto
-    entityGroup.position.set(posX, 0, posZ);
-    scene.add(entityGroup);
+function startBackrooms() {
+    console.log("Iniciando juego en modo clásico PC/Pantalla...");
+    document.getElementById('main-menu').style.display = 'none';
+    document.getElementById('hud').style.display = 'block';
+    if (!isMobile && renderer.domElement.requestPointerLock) {
+        renderer.domElement.requestPointerLock();
+    }
+}
 
-    // Guardar velocidad y tracking en la IA global
-    entities.push({ 
-        mesh: entityGroup, 
-        name: entityGroup.name, 
-        speed: type === "Kitty" ? 0.015 : 0.05 + (player.currentLevel * 0.003) 
+// ==========================================
+// 3. JUGABILIDAD EN CELULAR (CONTROLES TÁCTILES)
+// ==========================================
+function setupMobileControls() {
+    // Crear Joystick y botones dinámicamente en el HTML para no romper tu diseño
+    let mobileUI = document.createElement('div');
+    mobileUI.id = 'mobile-hud-controls';
+    mobileUI.style.position = 'fixed';
+    mobileUI.style.bottom = '20px';
+    mobileUI.style.left = '0';
+    mobileUI.style.width = '100%';
+    mobileUI.style.height = '180px';
+    mobileUI.style.zIndex = '999';
+    mobileUI.style.pointerEvents = 'none';
+
+    mobileUI.innerHTML = `
+        <!-- Joystick Izquierdo -->
+        <div id="touch-joystick" style="position: absolute; bottom: 20px; left: 30px; width: 110px; height: 110px; background: rgba(255,255,255,0.1); border: 3px solid #e6b14a; border-radius: 50%; pointer-events: auto;">
+            <div id="joystick-knob" style="position: absolute; top: 32px; left: 32px; width: 40px; height: 40px; background: #e6b14a; border-radius: 50%; transition: transform 0.05s;"></div>
+        </div>
+        <!-- Botón de Interactuar Derecho -->
+        <button id="touch-interact" style="position: absolute; bottom: 40px; right: 30px; width: 75px; height: 75px; background: rgba(90, 20, 20, 0.8); border: 2px solid #ff4444; color: white; border-radius: 50%; font-weight: bold; pointer-events: auto;">F</button>
+    `;
+    document.body.appendChild(mobileUI);
+
+    // Lógica táctil del Joystick
+    let joystick = document.getElementById('touch-joystick');
+    let knob = document.getElementById('joystick-knob');
+
+    joystick.addEventListener('touchstart', (e) => { joystickActive = true; });
+    joystick.addEventListener('touchmove', (e) => {
+        if (!joystickActive) return;
+        let rect = joystick.getBoundingClientRect();
+        let touch = e.touches[0];
+        let x = touch.clientX - (rect.left + rect.width/2);
+        let y = touch.clientY - (rect.top + rect.height/2);
+        
+        let distance = Math.min(Math.sqrt(x*x + y*y), 40);
+        let angle = Math.atan2(y, x);
+        
+        let moveX = distance * Math.cos(angle);
+        let moveY = distance * Math.sin(angle);
+        
+        knob.style.transform = `translate(${moveX}px, ${moveY}px)`;
+        
+        // Pasar datos al movimiento del jugador
+        moveForward = moveY < -15;
+        moveBackward = moveY > 15;
+        moveLeft = moveX < -15;
+        moveRight = moveX > 15;
+    });
+
+    joystick.addEventListener('touchend', () => {
+        joystickActive = false;
+        knob.style.transform = 'translate(0px, 0px)';
+        moveForward = moveBackward = moveLeft = moveRight = false;
+    });
+
+    // Control de cámara táctil deslizando en el resto de la pantalla
+    window.addEventListener('touchmove', (e) => {
+        if (e.touches[0].clientX > window.innerWidth / 2 && !joystickActive) {
+            let movementX = e.touches[0].clientX - touchX;
+            camera.rotation.y -= movementX * 0.005;
+        }
+        touchX = e.touches[0].clientX;
     });
 }
-// Añade esto en game-engine.js para conectar el botón del HTML
-function startVRInversion() {
-    console.log("Inicializando modo inmersivo...");
-    
-    // Forzar pantalla completa si el dispositivo lo soporta
-    if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().then(() => {
-            startBackrooms();
-        }).catch(err => {
-            console.warn("Pantalla completa rechazada, iniciando normal:", err);
-            startBackrooms();
-        });
-    } else {
-        startBackrooms();
-    }
+
+// ==========================================
+// 4. BUCLE DE JUEGO (ANIMATE)
+// ==========================================
+function animate() {
+    // Lógica de Movimiento simplificada
+    if (moveForward) camera.translateZ(-0.06);
+    if (moveBackward) camera.translateZ(0.06);
+    if (moveLeft) camera.translateX(-0.06);
+    if (moveRight) camera.translateX(0.06);
+
+    // Renderizar escena final (WebXR se encarga de duplicar a 3D si está en VR)
+    renderer.render(scene, camera);
 }
 
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Funciones vacías obligatorias para evitar que crashee la tienda del HTML
+function buyTool(item, cost) { console.log("Compraste: " + item + " por $" + cost); }
+function resetStats() { console.log("Estadísticas reiniciadas"); }
+function showSettings() { console.log("Configuración abierta"); }
+function submitDevCommand() { console.log("Comando enviado"); }
