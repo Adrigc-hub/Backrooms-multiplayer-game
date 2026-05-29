@@ -1,3 +1,15 @@
+// Asegurar que la pantalla de carga se oculte al iniciar
+window.addEventListener('DOMContentLoaded', () => {
+    let progress = document.getElementById('loading-progress');
+    let screen = document.getElementById('loading-screen');
+    
+    if (progress) progress.style.width = '100%';
+    
+    // Desvanecer pantalla de carga tras un breve instante
+    setTimeout(() => {
+        if (screen) screen.style.display = 'none';
+    }, 500);
+});
 // --- SOPORTE INMERSIVO VR Y PANTALLA COMPLETA ---
 function startVRInversion() {
     // Activa la pantalla completa para dispositivos móviles/visores antes de inicializar WebXR
